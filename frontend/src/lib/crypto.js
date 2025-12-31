@@ -40,9 +40,9 @@ const importPrivateKey = async (pem) => {
   );
 };
 
-export const encryptMessage = async (publicKeyPem, text) => {
+export const encryptMessage = async (publicKeyPem, text, senderPublicKeyPem = null) => {
   try {
-    if (!publicKeyPem) return text; // If no key, send as plain (or fail)
+    if (!publicKeyPem) return text;
 
     // 1. Generate AES Session Key
     const sessionKey = await window.crypto.subtle.generateKey(
@@ -62,7 +62,7 @@ export const encryptMessage = async (publicKeyPem, text) => {
       encodedText
     );
 
-    // 3. Encrypt Session Key with RSA (Recipient's Public Key)
+    // 3. Encrypt Session Key with Recipient's RSA Public Key
     const publicKey = await importPublicKey(publicKeyPem);
     const sessionKeyRaw = await window.crypto.subtle.exportKey("raw", sessionKey);
     
@@ -72,53 +72,79 @@ export const encryptMessage = async (publicKeyPem, text) => {
       sessionKeyRaw
     );
 
-    // 4. Package it all
+    // 4. ALSO Encrypt Session Key with Sender's RSA Public Key (for history)
+    let encryptedSenderKey = null;
+    if (senderPublicKeyPem) {
+        const senderPublicKey = await importPublicKey(senderPublicKeyPem);
+        const senderSessionKeyRaw = await window.crypto.subtle.encrypt(
+            { name: "RSA-OAEP" },
+            senderPublicKey,
+            sessionKeyRaw
+        );
+        encryptedSenderKey = btoa(ab2str(senderSessionKeyRaw));
+    }
+
+    // 5. Package it all
     const payload = {
       iv: btoa(ab2str(iv)),
       content: btoa(ab2str(encryptedContent)),
-      key: btoa(ab2str(encryptedSessionKey))
+      key: btoa(ab2str(encryptedSessionKey)),
+      sKey: encryptedSenderKey // Store the sender's copy
     };
 
     return JSON.stringify(payload);
   } catch (error) {
     console.error("Encryption failed:", error);
-    return text; // Fallback? Or error.
+    return text;
   }
 };
 
 export const decryptMessage = async (privateKeyPem, encryptedJson) => {
   try {
-    // Attempt parse
     let payload;
     try {
         payload = JSON.parse(encryptedJson);
     } catch {
-        return encryptedJson; // Not JSON -> Plain text
+        return encryptedJson;
     }
 
-    if (!payload.iv || !payload.key || !payload.content) return encryptedJson;
+    if (!payload.iv || !payload.content) return encryptedJson;
 
     // 1. Import Private Key
     const privateKey = await importPrivateKey(privateKeyPem);
 
-    // 2. Decrypt Session Key
-    const encryptedSessionKey = str2ab(atob(payload.key));
-    const sessionKeyRaw = await window.crypto.subtle.decrypt(
-      { name: "RSA-OAEP" },
-      privateKey,
-      encryptedSessionKey
-    );
+    // 2. Decrypt Session Key (Try Recipient Key first, then Sender Key)
+    let decryptedSessionKeyRaw;
+    try {
+        const encryptedSessionKey = str2ab(atob(payload.key));
+        decryptedSessionKeyRaw = await window.crypto.subtle.decrypt(
+          { name: "RSA-OAEP" },
+          privateKey,
+          encryptedSessionKey
+        );
+    } catch (e) {
+        // If recipient key fails, try the sender key (sKey)
+        if (payload.sKey) {
+            const encryptedSenderKey = str2ab(atob(payload.sKey));
+            decryptedSessionKeyRaw = await window.crypto.subtle.decrypt(
+              { name: "RSA-OAEP" },
+              privateKey,
+              encryptedSenderKey
+            );
+        } else {
+            throw new Error("Could not decrypt with any available keys");
+        }
+    }
 
-    // 3. Import Session Key
+    // 3. Import Session Key and Decrypt Content
     const sessionKey = await window.crypto.subtle.importKey(
       "raw",
-      sessionKeyRaw,
+      decryptedSessionKeyRaw,
       { name: "AES-GCM" },
       true,
       ["decrypt"]
     );
 
-    // 4. Decrypt Content
     const iv = str2ab(atob(payload.iv));
     const encryptedContent = str2ab(atob(payload.content));
 

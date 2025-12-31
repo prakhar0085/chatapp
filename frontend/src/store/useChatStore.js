@@ -108,11 +108,12 @@ export const useChatStore = create((set, get) => ({
         return;
       }
 
-      // E2EE Logic: Encrypt for the Receiver
+      // E2EE Logic: Encrypt for the Receiver AND the Sender
       let textToSend = messageData.text;
+      const myPublicKey = useAuthStore.getState().authUser.publicKey;
       if (selectedUser.publicKey) {
          console.log("🔒 Encrypting message for:", selectedUser.fullName);
-         textToSend = await encryptMessage(selectedUser.publicKey, messageData.text);
+         textToSend = await encryptMessage(selectedUser.publicKey, messageData.text, myPublicKey);
       }
       
       const payload = { ...messageData, text: textToSend };

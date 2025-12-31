@@ -1,3 +1,5 @@
+https://talkative-3ndq.onrender.com
+
 In your project, Redis is used for Horizontal Scaling (making the app "Placement Ready").
 
 Without Redis, your chat app is stuck on a single server. If that server crashes or gets too many users, the app dies. You cannot just "add more servers" because Server A wouldn't know about users connected to Server B.
