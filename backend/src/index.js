@@ -40,8 +40,9 @@ app.use("/api/messages" , messageRoutes);
 app.use("/api/ai", aiRoutes);
 
 if (process.env.NODE_ENV === "production") {
-    // Relative to backend/src/index.js, the dist folder is at ../../frontend/dist
-    const frontendDistPath = path.join(__dirname, "frontend", "dist");
+    // We are currently in the 'backend' folder, so we need to go up one level to find 'frontend'
+    const frontendDistPath = path.join(__dirname, "..", "frontend", "dist");
+    
     app.use(express.static(frontendDistPath));
   
     app.get("*", (req, res) => {
