@@ -1,4 +1,4 @@
-https://talkative-3ndq.onrender.com
+https://talkative-3ndq.onrender.com/
 
 In your project, Redis is used for Horizontal Scaling (making the app "Placement Ready").
 
